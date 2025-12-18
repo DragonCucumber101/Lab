@@ -1,0 +1,339 @@
+﻿<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8" />
+    <title>Учёт пациентов</title>
+    <link href="Style.css" rel="stylesheet" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.0/signalr.min.js"></script>
+
+</head>
+
+<body>
+
+    <!-- Голубая полоса -->
+    <div class="header">
+        <img src="images/Krest.png" class="logo" />
+        <h2>Пациенты и врачи больницы № 100</h2>
+    </div>
+
+    <!-- Кнопки загрузки -->
+    <button onclick="loadPatients()">Пациенты</button>
+    <button onclick="loadDoctors()">Доктора</button>
+    <button onclick="loadSpecialties()">Специальности</button>
+    <button onclick="loadAppointments()">Приёмы</button>
+    <button onclick="loadVisits()">Визиты</button>
+    <button onclick="loadDiagnoses()">Диагнозы</button>
+    <button onclick="loadVisitDiagnoses()">Визиты и диагнозы</button>
+
+    <br><br>
+
+    <!-- Таблица -->
+    <table id="dataTable" style="display:none;">
+        <thead></thead>
+        <tbody></tbody>
+    </table>
+
+    <br>
+
+    <!-- Всплывающие кнопки -->
+    <button id="addBtn" style="display:none;" onclick="addRecord()">Добавить</button>
+    <button id="deleteBtn" style="display:none;" onclick="deleteRecord()">Удалить выбранное</button>
+    <button id="saveBtn" style="display:none;" onclick="saveChanges()">Сохранить изменения</button>
+
+
+    <script>
+        let currentData = [];
+        let editedRows = {};
+        let currentEntity = "";
+        let idField = "";
+        let currentColumns = [];
+        let sortField = null;
+        let sortAsc = true;
+
+        let selectedRowId = null;
+
+        // === Выделение строки ===
+        document.addEventListener("click", function (e) {
+            const tr = e.target.closest("tr");
+            if (!tr || !tr.dataset.id) return;
+
+            document.querySelectorAll("tr").forEach(r => r.classList.remove("selected"));
+            tr.classList.add("selected");
+
+            selectedRowId = tr.dataset.id;
+        });
+
+        // === Универсальная загрузка таблицы ===
+        async function loadTable(url, entity, columns, idFieldName) {
+            currentEntity = entity;
+            idField = idFieldName;
+            currentColumns = columns;
+
+            const response = await fetch(url);
+            currentData = await response.json();
+            editedRows = {};
+
+            renderTable();
+        }
+
+        // === Рендер таблицы ===
+        function renderTable() {
+            const table = document.getElementById("dataTable");
+            const thead = table.querySelector("thead");
+            const tbody = table.querySelector("tbody");
+
+            thead.innerHTML = "";
+            tbody.innerHTML = "";
+
+            // Заголовки
+            let headerRow = "<tr>";
+            currentColumns.forEach(col =>
+                headerRow += `<th onclick="sortBy('${col.field}')">${col.header}</th>`
+            );
+            headerRow += "</tr>";
+            thead.innerHTML = headerRow;
+
+            // Форматирование дат
+            function formatDate(value) {
+                if (!value) return "";
+                const d = new Date(value);
+                if (isNaN(d)) return value;
+                return `${String(d.getDate()).padStart(2, "0")}.${String(d.getMonth() + 1).padStart(2, "0")}.${d.getFullYear()}`;
+            }
+
+            // Строки таблицы
+            currentData.forEach(item => {
+                let row = `<tr data-id="${item[idField]}">`;
+
+                currentColumns.forEach(col => {
+                    function getValue(obj, path) {
+                        return path.split('.').reduce((o, k) => (o ? o[k] : null), obj);
+                    }
+                    let val = getValue(item, col.field);
+
+                    if (col.field.toLowerCase().includes("date"))
+                        val = formatDate(val);
+
+                    row += `<td data-field="${col.field}" onclick="editCell(this)">${val ?? ""}</td>`;
+                });
+
+                row += "</tr>";
+                tbody.innerHTML += row;
+            });
+
+            table.style.display = "table";
+
+            // Добавления и удаления
+            document.getElementById("addBtn").style.display = "inline-block";
+            document.getElementById("deleteBtn").style.display = "inline-block";
+        }
+
+        // === Сортировка ===
+        function sortBy(field) {
+            if (sortField === field) sortAsc = !sortAsc;
+            else {
+                sortField = field;
+                sortAsc = true;
+            }
+
+            currentData.sort((a, b) => {
+                let A = a[field];
+                let B = b[field];
+
+                // Числа
+                if (!isNaN(A) && !isNaN(B)) return sortAsc ? A - B : B - A;
+
+                // Даты
+                let dA = new Date(A);
+                let dB = new Date(B);
+                if (!isNaN(dA) && !isNaN(dB)) return sortAsc ? dA - dB : dB - dA;
+
+                // строки
+                A = String(A).toLowerCase();
+                B = String(B).toLowerCase();
+                return sortAsc ? A.localeCompare(B) : B.localeCompare(A);
+            });
+
+            renderTable();
+        }
+
+        // === Редактирование (ячейка) ===
+        function editCell(td) {
+            if (td.classList.contains("editing")) return;
+
+            const oldValue = td.textContent;
+            td.classList.add("editing");
+
+            td.innerHTML = `<input type='text' value='${oldValue}'>`;
+            const input = td.querySelector("input");
+            input.focus();
+
+            input.addEventListener("blur", () => finishEdit(td, input.value));
+            input.addEventListener("keydown", e => {
+                if (e.key === "Enter") finishEdit(td, input.value);
+            });
+        }
+
+        function finishEdit(td, newValue) {
+            td.classList.remove("editing");
+            td.textContent = newValue;
+
+            const tr = td.closest("tr");
+            const id = tr.dataset.id;
+            const field = td.dataset.field;
+
+            if (!editedRows[id]) editedRows[id] = {};
+            editedRows[id][field] = newValue;
+
+            document.getElementById("saveBtn").style.display = "inline-block";
+        }
+
+        // === Сохранение изменений (PUT) ===
+        async function saveChanges() {
+            for (const id in editedRows) {
+                const original = currentData.find(d => d[idField] == id);
+                const updated = { ...original, ...editedRows[id] };
+
+                await fetch(`/api/${currentEntity}/${id}`, {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(updated)
+                });
+            }
+
+            alert("Изменения сохранены");
+            document.getElementById("saveBtn").style.display = "none";
+
+            window[`load${capitalize(currentEntity)}`]();
+        }
+
+        function capitalize(str) {
+            return str.charAt(0).toUpperCase() + str.slice(1);
+        }
+
+        // === ДОБАВЛЕНИЕ === 
+        async function addRecord() {
+            let obj = {};
+
+            for (const col of currentColumns) {
+                if (col.field === idField) continue; // ID не вводится
+                if (col.field.toLowerCase().includes("date")) {
+                    let value = prompt("Введите дату (дд.мм.гггг): " + col.header);
+                    let parts = value.split('.');
+                    // parts: [dd, mm, yyyy]
+                    value = `${parts[2]}-${parts[1]}-${parts[0]}`; // yyyy-mm-dd
+                    obj[col.field] = value;
+                } else {
+                    obj[col.field] = prompt("Введите: " + col.header);
+                }
+            }
+
+
+            const response = await fetch(`/api/${currentEntity}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(obj)
+            });
+
+            if (response.ok) {
+                alert("Запись добавлена");
+                window[`load${capitalize(currentEntity)}`]();
+            } else {
+                alert("Ошибка добавления");
+            }
+        }
+
+        /* === УДАЛЕНИЕ === */
+        async function deleteRecord() {
+            if (!selectedRowId) {
+                alert("Выберите строку для удаления");
+                return;
+            }
+
+            if (!confirm("Удалить выбранную запись?")) return;
+
+            const response = await fetch(`/api/${currentEntity}/${selectedRowId}`, {
+                method: "DELETE"
+            });
+
+            if (response.ok) {
+                alert("Запись удалена");
+                window[`load${capitalize(currentEntity)}`]();
+            } else {
+                alert("Ошибка удаления");
+            }
+        }
+
+        /* === Сущности === */
+
+        function loadPatients() {
+            loadTable("/api/patients", "patients", [
+                { header: "ID", field: "idPatients" },
+                { header: "Фамилия", field: "surname" },
+                { header: "Имя", field: "name" },
+                { header: "Отчество", field: "lastName" },
+                { header: "Дата рождения", field: "dateOfBirth" },
+                { header: "Адрес", field: "adress" },
+                { header: "телефон", field: "phoneNumber" },
+            ], "idPatients");
+        }
+
+        function loadDoctors() {
+            loadTable("/api/doctors", "doctors", [
+                { header: "ID", field: "idDoctors" },
+                { header: "Фамилия", field: "surname" },
+                { header: "Имя", field: "name" },
+                { header: "Отчество", field: "lastName" },
+                { header: "Специальность", field: "specialty.name" }
+            ], "idDoctors");
+        }
+
+        function loadSpecialties() {
+            loadTable("/api/specialties", "specialties", [
+                { header: "ID", field: "idSpecialty" },
+                { header: "Название", field: "name" },
+                { header: "Описание специализации", field: "description" }
+            ], "idSpecialty");
+        }
+
+        function loadAppointments() {
+            loadTable("/api/appointments", "appointments", [
+                { header: "ID", field: "idAppointment" },
+                { header: "Пациент", field: "patient.surname" },
+                { header: "Доктор", field: "doctor.surname" },
+                { header: "Дата", field: "appointmentDatetime" },
+                { header: "Жалобы", field: "reasonForVisit" }
+            ], "idAppointment");
+        }
+
+        function loadVisits() {
+            loadTable("/api/visits", "visits", [
+                { header: "ID", field: "idVisits" },
+                { header: "ID пациента", field: "idPatients" },
+                { header: "ID врача", field: "idDoctor" },
+                { header: "Дата визита", field: "visitDatetime" },
+                { header: "Жалоба", field: "chiefComplaint" }
+            ], "idVisits");
+        }
+
+        function loadDiagnoses() {
+            loadTable("/api/diagnoses", "diagnoses", [
+                { header: "ID", field: "idDiagnoses" },
+                { header: "Название", field: "name" },
+                { header: "Описание болезни", field: "description" }
+            ], "idDiagnoses");
+        }
+
+        function loadVisitDiagnoses() {
+            loadTable("/api/visitdiagnoses", "visitdiagnoses", [
+                { header: "ID", field: "idVisitDiagnoses" },
+                { header: "ID визита", field: "idVisit" },
+                { header: "ID диагноза", field: "idDiagnoses" }
+            ], "idVisitDiagnoses");
+        }
+
+    </script>
+
+</body>
+</html>

@@ -1,0 +1,53 @@
+﻿tr.selected {
+    background-color: #d0e6ff !important;
+}
+
+td {
+    cursor: pointer;
+}
+
+/* Шапка и выравнивание элементов в строке */
+.header {
+    background-color: #226131; /* светло-голубой */
+    display: flex;
+    align-items: center; /* выравнивание по вертикали */
+    padding: 10px 20px;
+    border-radius: 6px;
+    margin-bottom: 15px;
+    color: white;
+}
+
+    /* Картинка — фиксированный размер и отступы */
+    .header .logo {
+        width: 100px; /* размеры картинки */
+        height: auto;
+        margin-right: 15px;
+    }
+
+body {
+    background-color: #FFFFF0;
+    /* Фоновый цвет */
+}
+
+th {
+    background: #226131; /* Цвет фона строки заголовка */
+    color: white; /* Цвет текста */
+    text-align: center; /* Выравнивание*/
+    font-family: Arial, Helvetica, sans-serif; /* Выбор гарнитуры */
+    font-size: 1em; /* Размер текста */
+}
+
+table,
+td {
+    border: 1px solid black;
+    border-collapse: collapse;
+    padding: 5px;
+}
+
+    td.editing {
+        background: #45f56e;
+    }
+
+button {
+    margin: 5px;
+}
