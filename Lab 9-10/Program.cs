@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using SignalRApp;
 using System.ComponentModel;
 // явл€етс€ стартовой точкой дл€ программы. «десь происходит стартова€ настройка и app.Run() запускает проект
-
+var a = 0;
 var builder = WebApplication.CreateBuilder(args); //
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")).UseSnakeCaseNamingConvention());
